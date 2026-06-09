@@ -706,8 +706,12 @@ def run_video_recap(video_path, script_text, output_dir, voice_name="my-MM-Thiha
     old_cwd = os.getcwd()
     os.chdir(output_dir)
     try:
+        src_video = os.path.abspath(video_path)
         local_video = os.path.join(output_dir, "input.mp4")
-        shutil.copy(video_path, local_video)
+        if os.path.abspath(src_video) != os.path.abspath(local_video):
+            shutil.copy(src_video, local_video)
+        else:
+            local_video = src_video
 
         USER_SCRIPT_FILE = os.path.join(output_dir, "text.txt")
         OUTPUT_FINAL = os.path.join(output_dir, "final_recap.mp4")
