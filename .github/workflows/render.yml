@@ -1,1 +1,63 @@
+name: Render FFmpeg Recap
 
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        required: true
+        type: string
+      script_text:
+        required: true
+        type: string
+      voice_name:
+        required: false
+        default: my-MM-ThihaNeural
+        type: string
+      voice_speed:
+        required: false
+        default: "+40%"
+        type: string
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt update
+          sudo apt install -y ffmpeg
+          ffmpeg -version
+          free -h
+          df -h
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download input video
+        run: |
+          curl -L "${{ inputs.video_url }}" -o input.mp4
+
+      - name: Write script
+        run: |
+          cat > text.txt << 'EOF'
+          ${{ inputs.script_text }}
+          EOF
+
+      - name: Render
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python bot.py
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: recap-output
+          path: |
+            final_recap.mp4
+            subtitles.srt
