@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Body, Header
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -105,20 +105,14 @@ def create_job(kind: str, title: str, **extra):
 
 
 
-
-def trigger_github_render(job_id, video_url, script_text, voice_name="my-MM-ThihaNeural", voice_speed="+40%"):
+def trigger_github_render(video_url, script_text, voice_name="my-MM-ThihaNeural", voice_speed="+40%"):
     repo = os.getenv("GITHUB_REPO", "Thetzt0/auto")
     workflow = os.getenv("GITHUB_WORKFLOW", "render.yml")
     token = os.getenv("GITHUB_TOKEN", "")
     branch = os.getenv("GITHUB_REF", "main")
-    base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
     if not token:
         raise RuntimeError("GITHUB_TOKEN မရှိသေးပါ။")
-    if not base_url:
-        raise RuntimeError("PUBLIC_BASE_URL မရှိသေးပါ။")
-
-    callback_url = f"{base_url}/api/github/progress/{job_id}"
 
     url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
 
@@ -136,8 +130,6 @@ def trigger_github_render(job_id, video_url, script_text, voice_name="my-MM-Thih
                 "script_text": script_text,
                 "voice_name": voice_name,
                 "voice_speed": voice_speed,
-                "job_id": job_id,
-                "callback_url": callback_url,
             },
         },
         timeout=30,
@@ -147,7 +139,6 @@ def trigger_github_render(job_id, video_url, script_text, voice_name="my-MM-Thih
         raise RuntimeError(f"GitHub dispatch failed: {r.status_code} {r.text}")
 
     return True
-
 
 class ProgressReporter:
     def __init__(self, job_id):
@@ -574,7 +565,7 @@ def api_generate(video_id: str = Form(...), script_text: str = Form(...), voice_
         raise HTTPException(status_code=500, detail="PUBLIC_BASE_URL မသတ်မှတ်ရသေးပါ။")
 
     video_url = f"{base_url}/api/videos/{video_id}/file"
-    trigger_github_render(job_id, video_url, script_text, voice_name, voice_speed)
+    trigger_github_render(video_url, script_text, voice_name, voice_speed)
     update_job(job_id, status="running", progress=10, message="GitHub Actions render started", github_render=True)
     return {"job_id": job_id}
 
@@ -1054,99 +1045,6 @@ async function loadVideos(refresh){if(!selectedId){return} const ch=channels.fin
 function renderVideos(videos){const box=document.getElementById('videos'); box.innerHTML=''; if(!videos.length){box.innerHTML='<div class="small">ဒီ time range ထဲ video မတွေ့သေးပါ။ Refresh နှိပ်ကြည့်ပါ။</div>';return} videos.forEach((v,i)=>{const d=document.createElement('div'); d.className='video'; d.innerHTML=`<a href="${v.url}" target="_blank"><img class="thumb" src="${v.thumbnail||''}"></a><div class="vbody"><div class="title">${i+1}. ${v.title}</div><div class="meta">${fmtViews(v.views)} · ${ago(v.published_at)}</div></div>`; box.appendChild(d)})}
 loadChannels();
 </script>
-
-<script id="github-live-panel-js">
-(function(){
-  if (window.__githubLivePanelInstalled) return;
-  window.__githubLivePanelInstalled = true;
-
-  const box = document.createElement("div");
-  box.id = "github-live-panel";
-  box.style.cssText = "position:fixed;right:12px;bottom:12px;z-index:99999;width:min(440px,calc(100vw - 24px));max-height:72vh;overflow:auto;background:#08111f;color:#e8eefc;border:1px solid #2b3858;border-radius:16px;box-shadow:0 10px 35px rgba(0,0,0,.45);font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:13px;padding:12px";
-  document.addEventListener("DOMContentLoaded", function(){ document.body.appendChild(box); });
-
-  function esc(x){
-    return String(x ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-
-  function clipText(clips){
-    if (!Array.isArray(clips) || !clips.length) return "<span style='color:#93a4c4'>No clips yet</span>";
-    return clips.map(c => `<code>${esc(c.start)} → ${esc(c.end)}</code>`).join(" ");
-  }
-
-  async function poll(){
-    try{
-      const r = await fetch("/api/status?ts=" + Date.now(), {cache:"no-store"});
-      const d = await r.json();
-      const jobs = d.jobs || [];
-      const job = jobs.find(j => j.kind === "recap" && (j.github_render || j.github_status || j.scenes || j.github_run_url)) || jobs.find(j => j.kind === "recap");
-
-      if (!job){
-        box.innerHTML = `<b>GitHub Render Live</b><div style="color:#93a4c4;margin-top:6px">No recap job yet</div>`;
-        return;
-      }
-
-      const progress = Number(job.progress || 0);
-      const scenes = Array.isArray(job.scenes) ? job.scenes : [];
-      const current = Number(job.current_scene || 0);
-      const total = Number(job.total_scenes || scenes.length || 0);
-
-      let html = `
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-          <b>GitHub Render Live</b>
-          <span style="color:#93a4c4">${esc(job.status || "")}</span>
-        </div>
-        <div style="margin-top:8px;background:#12203a;border-radius:999px;overflow:hidden;height:10px">
-          <div style="width:${Math.max(0, Math.min(100, progress))}%;height:10px;background:#27d5ff"></div>
-        </div>
-        <div style="margin-top:6px"><b>${progress}%</b> — ${esc(job.message || "")}</div>
-        <div style="color:#93a4c4;margin-top:4px">Step: ${esc(job.current_step || job.github_status || "-")}</div>
-        <div style="color:#93a4c4">Scenes: ${current || 0} / ${total || 0}</div>
-      `;
-
-      if (job.github_run_url){
-        html += `<div style="margin-top:6px"><a style="color:#27d5ff" href="${esc(job.github_run_url)}" target="_blank">Open GitHub run</a></div>`;
-      }
-
-      if (job.status === "done" && job.video_url){
-        html += `<div style="margin-top:8px"><a style="color:#27d5ff;font-weight:700" href="${esc(job.video_url)}" target="_blank">Download MP4</a>`;
-        if (job.srt_url) html += ` · <a style="color:#27d5ff;font-weight:700" href="${esc(job.srt_url)}" target="_blank">Download SRT</a>`;
-        html += `</div>`;
-      }
-
-      if (job.status === "error"){
-        html += `<div style="margin-top:8px;color:#ff7b86"><b>Error:</b> ${esc(job.error || job.message || "Render failed")}</div>`;
-      }
-
-      if (scenes.length){
-        html += `<hr style="border:0;border-top:1px solid #2b3858;margin:10px 0">
-                 <b>Scenes / Clips</b>
-                 <div style="margin-top:6px;display:grid;gap:8px">`;
-
-        scenes.slice(0, 80).forEach((sc, idx) => {
-          const isCur = current === idx + 1;
-          html += `
-            <div style="border:1px solid ${isCur ? "#27d5ff" : "#24304d"};border-radius:12px;padding:8px;background:${isCur ? "#10233b" : "#0d1629"}">
-              <div><b>Scene ${idx + 1}</b> ${isCur ? "<span style='color:#27d5ff'>rendering</span>" : ""}</div>
-              <div style="color:#d9e4ff;margin:4px 0">${esc(sc.text || "").slice(0, 220)}</div>
-              <div style="line-height:1.8">${clipText(sc.clips)}</div>
-            </div>`;
-        });
-
-        html += `</div>`;
-      }
-
-      box.innerHTML = html;
-    }catch(e){
-      box.innerHTML = `<b>GitHub Render Live</b><div style="color:#ff7b86;margin-top:6px">${esc(e.message)}</div>`;
-    }
-  }
-
-  setInterval(poll, 3000);
-  poll();
-})();
-</script>
-
 </body>
 </html>
 """

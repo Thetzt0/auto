@@ -17,14 +17,6 @@ on:
         required: false
         default: "+40%"
         type: string
-      job_id:
-        required: false
-        default: ""
-        type: string
-      callback_url:
-        required: false
-        default: ""
-        type: string
 
 jobs:
   render:
@@ -32,19 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Notify VPS job started
-        if: ${{ inputs.callback_url != '' }}
-        env:
-          CALLBACK_URL: ${{ inputs.callback_url }}
-          CALLBACK_TOKEN: ${{ secrets.CALLBACK_TOKEN }}
-          JOB_ID: ${{ inputs.job_id }}
-        run: |
-          curl -sS -X POST "$CALLBACK_URL" \
-            -H "Content-Type: application/json" \
-            -H "X-Callback-Token: $CALLBACK_TOKEN" \
-            -d "{\"status\":\"running\",\"progress\":15,\"message\":\"GitHub runner started\",\"github_status\":\"in_progress\",\"github_run_id\":\"${{ github.run_id }}\",\"github_run_url\":\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" || true
-
 
       - name: Install system deps
         run: |
@@ -76,31 +55,6 @@ jobs:
         run: |
           python bot.py
 
-      - name: Upload result back to VPS
-        if: ${{ success() && inputs.callback_url != '' }}
-        env:
-          CALLBACK_URL: ${{ inputs.callback_url }}
-          CALLBACK_TOKEN: ${{ secrets.CALLBACK_TOKEN }}
-        run: |
-          UPLOAD_URL="${CALLBACK_URL/progress/upload}"
-          [ -f scenes.json ] || echo "[]" > scenes.json
-          curl -sS -X POST "$UPLOAD_URL" \
-            -H "X-Callback-Token: $CALLBACK_TOKEN" \
-            -F "video=@final_recap.mp4" \
-            -F "srt=@subtitles.srt" \
-            -F "scenes=@scenes.json;type=application/json"
-
-      - name: Notify VPS failure
-        if: ${{ failure() && inputs.callback_url != '' }}
-        env:
-          CALLBACK_URL: ${{ inputs.callback_url }}
-          CALLBACK_TOKEN: ${{ secrets.CALLBACK_TOKEN }}
-        run: |
-          curl -sS -X POST "$CALLBACK_URL" \
-            -H "Content-Type: application/json" \
-            -H "X-Callback-Token: $CALLBACK_TOKEN" \
-            -d "{\"status\":\"error\",\"progress\":100,\"message\":\"GitHub render failed\",\"github_status\":\"completed\",\"github_conclusion\":\"failure\",\"github_run_id\":\"${{ github.run_id }}\",\"github_run_url\":\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" || true
-
       - name: Upload result
         uses: actions/upload-artifact@v4
         with:
@@ -108,4 +62,3 @@ jobs:
           path: |
             final_recap.mp4
             subtitles.srt
-            scenes.json
