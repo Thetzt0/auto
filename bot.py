@@ -30,7 +30,7 @@ MAX_VIDEO_SPEED = 1.3
 VIDEO_FPS = int(os.getenv("VIDEO_FPS", "60"))
 VIDEO_PRESET = os.getenv("VIDEO_PRESET", "medium")
 VIDEO_CRF = os.getenv("VIDEO_CRF", "16")
-AUDIO_BITRATE = os.getenv("AUDIO_BITRATE", "128k")
+AUDIO_BITRATE = os.getenv("AUDIO_BITRATE", "192k")
 
 # Subtitle timing uses Edge-TTS WordBoundary directly, like the original bot.py.
 # SRT_OFFSET_SEC is kept only for backward compatibility and is not applied.
@@ -542,7 +542,7 @@ def process_video(video_path, scenes, progress=None):
                 "-preset",
                 VIDEO_PRESET,
                 "-crf",
-                str(VIDEO_CRF),
+                str(VIDEO_INTERMEDIATE_CRF),
                 "-pix_fmt",
                 "yuv420p",
                 sub_file,
