@@ -104,6 +104,42 @@ def create_job(kind: str, title: str, **extra):
     return job_id
 
 
+
+def trigger_github_render(video_url, script_text, voice_name="my-MM-ThihaNeural", voice_speed="+40%"):
+    repo = os.getenv("GITHUB_REPO", "Thetzt0/auto")
+    workflow = os.getenv("GITHUB_WORKFLOW", "render.yml")
+    token = os.getenv("GITHUB_TOKEN", "")
+    branch = os.getenv("GITHUB_REF", "main")
+
+    if not token:
+        raise RuntimeError("GITHUB_TOKEN မရှိသေးပါ။")
+
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
+
+    r = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        json={
+            "ref": branch,
+            "inputs": {
+                "video_url": video_url,
+                "script_text": script_text,
+                "voice_name": voice_name,
+                "voice_speed": voice_speed,
+            },
+        },
+        timeout=30,
+    )
+
+    if r.status_code != 204:
+        raise RuntimeError(f"GitHub dispatch failed: {r.status_code} {r.text}")
+
+    return True
+
 class ProgressReporter:
     def __init__(self, job_id):
         self.job_id = job_id
@@ -524,7 +560,13 @@ def api_generate(video_id: str = Form(...), script_text: str = Form(...), voice_
     if not script_text.strip():
         raise HTTPException(status_code=400, detail="Script text မရှိသေးပါ။")
     job_id = create_job("recap", "Final recap render", video_id=video_id, voice_name=voice_name, voice_speed=voice_speed, gemini_model=gemini_model)
-    start_thread(generate_recap_job, job_id, video_id, script_text, voice_name, voice_speed, gemini_model)
+    base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    if not base_url:
+        raise HTTPException(status_code=500, detail="PUBLIC_BASE_URL မသတ်မှတ်ရသေးပါ။")
+
+    video_url = f"{base_url}/api/videos/{video_id}/file"
+    trigger_github_render(video_url, script_text, voice_name, voice_speed)
+    update_job(job_id, status="running", progress=10, message="GitHub Actions render started", github_render=True)
     return {"job_id": job_id}
 
 
