@@ -355,13 +355,18 @@ def download_youtube_segment(job_id: str, url: str, start_raw: str, end_raw: str
             source_file = sources[0]
             cut_file = work / "cut_video_part_1.mp4"
 
-            update_job(job_id, progress=70, message=f"Fast: cutting {start_hms} → {end_hms} with no render...")
+            duration_hms = sec_to_hms(end - start)
+            update_job(job_id, progress=70, message=f"Fast: safe copy cutting {start_hms} → {end_hms}...")
             subprocess.run([
                 "ffmpeg", "-y", "-loglevel", "error",
-                "-ss", start_hms,
-                "-to", end_hms,
+                "-fflags", "+genpts",
                 "-i", str(source_file),
+                "-ss", start_hms,
+                "-t", duration_hms,
+                "-map", "0:v:0",
+                "-map", "0:a:0?",
                 "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
                 "-movflags", "+faststart",
                 str(cut_file),
             ], check=True)
