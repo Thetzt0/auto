@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import time
+import requests
 from pathlib import Path
 
 import edge_tts
@@ -35,6 +36,24 @@ AUDIO_BITRATE = os.getenv("AUDIO_BITRATE", "128k")
 # Subtitle timing uses Edge-TTS WordBoundary directly, like the original bot.py.
 # SRT_OFFSET_SEC is kept only for backward compatibility and is not applied.
 SRT_OFFSET_SEC = float(os.getenv("SRT_OFFSET_SEC", "0"))
+
+CALLBACK_URL = os.getenv("CALLBACK_URL", "").strip()
+CALLBACK_TOKEN = os.getenv("CALLBACK_TOKEN", "").strip()
+JOB_ID = os.getenv("JOB_ID", "").strip()
+
+
+def github_progress(**payload):
+    """Send live GitHub render progress back to VPS website."""
+    if not CALLBACK_URL:
+        return
+    try:
+        headers = {"Content-Type": "application/json"}
+        if CALLBACK_TOKEN:
+            headers["X-Callback-Token"] = CALLBACK_TOKEN
+        requests.post(CALLBACK_URL, headers=headers, json=payload, timeout=20)
+    except Exception as e:
+        print(f"[callback skipped] {e}", flush=True)
+
 
 generation_config = {
     "temperature": 0.2,
@@ -260,6 +279,7 @@ async def get_timestamps(video_path, user_text, progress=None, gemini_model=None
 
     if progress is not None:
         progress(0.25, desc="Gemini is analyzing scenes...")
+    github_progress(progress=30, message="Gemini is analyzing scenes...", current_step="scene_matching", github_status="in_progress")
 
     model = genai.GenerativeModel((gemini_model or GEMINI_MODEL), generation_config=generation_config)
     prompt = f"""
@@ -288,7 +308,30 @@ async def get_timestamps(video_path, user_text, progress=None, gemini_model=None
 
     response = model.generate_content([video_upload, prompt])
     raw_text = response.text or ""
-    return parse_gemini_json(raw_text)
+    scenes = parse_gemini_json(raw_text)
+
+    try:
+        Path("scenes.json").write_text(json.dumps(scenes, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"Could not write scenes.json: {e}", flush=True)
+
+    scene_count = len(scenes) if isinstance(scenes, list) else 0
+    clip_count = 0
+    if isinstance(scenes, list):
+        for item in scenes:
+            if isinstance(item, dict) and isinstance(item.get("clips"), list):
+                clip_count += len(item.get("clips"))
+
+    github_progress(
+        progress=35,
+        message=f"Scenes/clips ready: {scene_count} scenes, {clip_count} clips",
+        current_step="scenes_ready",
+        scenes=scenes,
+        total_scenes=scene_count,
+        total_clips=clip_count,
+        github_status="in_progress",
+    )
+    return scenes
 
 
 async def generate_audio_with_boundaries(text, output_path):
@@ -457,6 +500,18 @@ def process_video(video_path, scenes, progress=None):
     for i, scene in enumerate(scenes):
         if not isinstance(scene, dict):
             continue
+        scene_pct = int(35 + (i / total_scenes) * 55)
+        scene_msg = f"Rendering scene {i + 1}/{total_scenes}"
+        github_progress(
+            status="running",
+            progress=scene_pct,
+            message=scene_msg,
+            current_step="rendering_scene",
+            current_scene=i + 1,
+            total_scenes=total_scenes,
+            current_scene_data=scene,
+            github_status="in_progress",
+        )
         if progress is not None:
             progress(0.30 + (i / total_scenes) * 0.60, desc=f"Processing scene {i + 1}/{total_scenes}...")
 
