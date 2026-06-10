@@ -27,9 +27,9 @@ MAX_CHARS_PER_BLOCK = 78
 MIN_VIDEO_SPEED = 0.2
 MAX_VIDEO_SPEED = 1.3
 
-VIDEO_FPS = int(os.getenv("VIDEO_FPS", "30"))
-VIDEO_PRESET = os.getenv("VIDEO_PRESET", "fast")
-VIDEO_CRF = os.getenv("VIDEO_CRF", "20")
+VIDEO_FPS = int(os.getenv("VIDEO_FPS", "60"))
+VIDEO_PRESET = os.getenv("VIDEO_PRESET", "medium")
+VIDEO_CRF = os.getenv("VIDEO_CRF", "18")
 AUDIO_BITRATE = os.getenv("AUDIO_BITRATE", "128k")
 
 # Subtitle timing uses Edge-TTS WordBoundary directly, like the original bot.py.
